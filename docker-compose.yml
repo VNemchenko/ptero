@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  panel:
+    image: ghcr.io/pterodactyl/panel:latest
+    container_name: pterodactyl_panel
+    depends_on:
+      - mariadb
+      - redis
+    environment:
+      APP_URL: https://pterodactyl.redbastion.ru
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_DATABASE: pterodactyl
+      DB_USERNAME: pterodactyl
+      DB_PASSWORD: example
+      CACHE_DRIVER: redis
+      SESSION_DRIVER: redis
+    volumes:
+      - ./panel/var:/app/var
+      - ./panel/logs:/app/storage/logs
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pterodactyl.rule=Host(`pterodactyl.redbastion.ru`)"
+      - "traefik.http.routers.pterodactyl.entrypoints=web,websecure"
+      - "traefik.http.routers.pterodactyl.tls=true"
+      - "traefik.http.routers.pterodactyl.tls.certresolver=letsencrypt"
+    networks:
+      - internal
+
+  wings:
+    image: ghcr.io/pterodactyl/wings:latest
+    container_name: pterodactyl_wings
+    privileged: true
+    depends_on:
+      - panel
+    environment:
+      PANEL_URL: https://pterodactyl.redbastion.ru
+    volumes:
+      - /var/lib/pterodactyl:/var/lib/pterodactyl
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - internal
+
+  mariadb:
+    image: mariadb:10.5
+    container_name: pterodactyl_mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+      MYSQL_DATABASE: pterodactyl
+      MYSQL_USER: pterodactyl
+      MYSQL_PASSWORD: example
+    volumes:
+      - mariadb:/var/lib/mysql
+    networks:
+      - internal
+
+  redis:
+    image: redis:alpine
+    container_name: pterodactyl_redis
+    networks:
+      - internal
+
+  traefik:
+    image: traefik:v2.9
+    container_name: traefik
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.email=admin@redbastion.ru
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/acme.json:/letsencrypt/acme.json
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  mariadb:
